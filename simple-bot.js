@@ -307,47 +307,69 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
   
-  const [action, bossName] = interaction.customId.split(':');
+  try {
+    const [action, bossName] = interaction.customId.split(':');
 
-  if (action === 'reset') {
-    if (!bossTimers[bossName]) {
-      return interaction.reply({ 
-        content: `No active timer for **${bossName}**.`, 
-        ephemeral: true 
+    if (action === 'reset') {
+      if (!bossTimers[bossName]) {
+        return interaction.reply({ 
+          content: `No active timer for **${bossName}**.`, 
+          ephemeral: true 
+        });
+      }
+      
+      clearTimeout(bossTimers[bossName].timeout);
+      
+      // Reply first, then start the timer
+      await interaction.reply({
+        content: `🔄 **${bossName}** timer reset by ${interaction.user.username}!`
       });
+      
+      // Start the timer after replying
+      startBossTimer(interaction, bossName, bossTimers[bossName].duration, true);
     }
     
-    clearTimeout(bossTimers[bossName].timeout);
-    
-    // Reply first, then start the timer
-    await interaction.reply({
-      content: `🔄 **${bossName}** timer reset by ${interaction.user.username}!`
-    });
-    
-    // Start the timer after replying
-    startBossTimer(interaction, bossName, bossTimers[bossName].duration, true);
-  }
-  
-  if (action === 'killed') {
-    // Get the stored duration for this boss (either from bossDurations or from current timer)
-    let duration = getStoredDuration(bossName);
-    
-    // If no stored duration, check if there's a current timer with duration info
-    if (!duration && bossTimers[bossName]) {
-      duration = bossTimers[bossName].duration;
+    if (action === 'killed') {
+      // Check if interaction has already been replied to (prevent double-clicking)
+      if (interaction.replied || interaction.deferred) {
+        return;
+      }
+      
+      // Get the stored duration for this boss (either from bossDurations or from current timer)
+      let duration = getStoredDuration(bossName);
+      
+      // If no stored duration, check if there's a current timer with duration info
+      if (!duration && bossTimers[bossName]) {
+        duration = bossTimers[bossName].duration;
+      }
+      
+      // Default to 2 hours if no duration is found
+      if (!duration) {
+        duration = 2;
+      }
+      
+      // Reply first to prevent double-clicking
+      await interaction.reply({
+        content: `💀 **${bossName}** killed by ${interaction.user.username}! Timer restarted for ${duration} hours.`
+      });
+      
+      // Start new timer for the killed boss
+      startBossTimer(interaction, bossName, duration);
     }
+  } catch (error) {
+    console.error('Error in button interaction:', error);
     
-    // Default to 2 hours if no duration is found
-    if (!duration) {
-      duration = 2;
+    // Only reply if we haven't already replied
+    if (!interaction.replied && !interaction.deferred) {
+      try {
+        await interaction.reply({
+          content: '⚠️ An error occurred while processing this button.',
+          ephemeral: true
+        });
+      } catch (replyError) {
+        console.error('Error sending error reply:', replyError);
+      }
     }
-    
-    // Start new timer for the killed boss
-    startBossTimer(interaction, bossName, duration);
-    
-    await interaction.reply({
-      content: `💀 **${bossName}** killed by ${interaction.user.username}! Timer restarted for ${duration} hours.`
-    });
   }
 });
 
@@ -419,57 +441,80 @@ function displayTimers(context) {
  * @param {number|null} customEndTime - Custom end time in milliseconds
  */
 function startBossTimer(context, bossName, hours, isReset = false, customEndTime = null) {
-  const endTime = customEndTime || (Date.now() + hours * 3600000);
-  
-  // Store the duration for future use
-  storeDuration(bossName, hours);
-  
-  // Clear existing timer if present
-  if (bossTimers[bossName]) {
-    clearTimeout(bossTimers[bossName].timeout);
-  }
-  
-  // Set up new timer
-  bossTimers[bossName] = {
-    timeout: setTimeout(() => {
-      // Create "Boss Killed" button for when boss spawns
-      const killedButton = new ButtonBuilder()
-        .setCustomId(`killed:${bossName}`)
-        .setLabel(`Boss Killed`)
-        .setStyle(ButtonStyle.Success);
-      const killedRow = new ActionRowBuilder().addComponents(killedButton);
-      
-      context.channel.send({ 
-        content: `⚔️ **${bossName}** is spawning now!`, 
-        components: [killedRow] 
-      });
-      delete bossTimers[bossName];
-    }, endTime - Date.now()),
-    endTime: endTime,
-    duration: hours
-  };
+  try {
+    // Validate inputs
+    if (!bossName || typeof bossName !== 'string') {
+      console.error('Invalid boss name:', bossName);
+      return;
+    }
+    
+    if (!hours || isNaN(hours) || hours <= 0) {
+      console.error('Invalid hours:', hours);
+      return;
+    }
+    
+    const endTime = customEndTime || (Date.now() + hours * 3600000);
+    
+    // Store the duration for future use
+    storeDuration(bossName, hours);
+    
+    // Clear existing timer if present
+    if (bossTimers[bossName]) {
+      clearTimeout(bossTimers[bossName].timeout);
+    }
+    
+    // Set up new timer
+    bossTimers[bossName] = {
+      timeout: setTimeout(() => {
+        try {
+          // Create "Boss Killed" button for when boss spawns
+          const killedButton = new ButtonBuilder()
+            .setCustomId(`killed:${bossName}`)
+            .setLabel(`Boss Killed`)
+            .setStyle(ButtonStyle.Success);
+          const killedRow = new ActionRowBuilder().addComponents(killedButton);
+          
+          context.channel.send({ 
+            content: `⚔️ **${bossName}** is spawning now!`, 
+            components: [killedRow] 
+          });
+          
+          // Clean up the timer from storage
+          delete bossTimers[bossName];
+        } catch (error) {
+          console.error('Error in timer callback:', error);
+          // Still clean up the timer even if there's an error
+          delete bossTimers[bossName];
+        }
+      }, endTime - Date.now()),
+      endTime: endTime,
+      duration: hours
+    };
 
-  const respawnTime = new Date(endTime).toLocaleString();
-  
-  // Create reset button
-  const button = new ButtonBuilder()
-    .setCustomId(`reset:${bossName}`)
-    .setLabel(`Reset ${bossName}`)
-    .setStyle(ButtonStyle.Primary);
-  const row = new ActionRowBuilder().addComponents(button);
+    const userTimeString = new Date(endTime).toLocaleString('en-US', { timeZone: userTimezone });
+    
+    // Create reset button
+    const button = new ButtonBuilder()
+      .setCustomId(`reset:${bossName}`)
+      .setLabel(`Reset ${bossName}`)
+      .setStyle(ButtonStyle.Primary);
+    const row = new ActionRowBuilder().addComponents(button);
 
-  // Prepare message content
-  const msgContent = isReset
-    ? `🔄 Timer for **${bossName}** reset for ${hours} hours (Respawn at ${respawnTime}).`
-    : `⏳ Timer started for **${bossName}** (${hours} hours). Respawn at ${respawnTime}.`;
+    // Prepare message content
+    const msgContent = isReset
+      ? `🔄 Timer for **${bossName}** reset for ${hours} hours (Respawn at ${userTimeString}).`
+      : `⏳ Timer started for **${bossName}** (${hours} hours). Respawn at ${userTimeString}.`;
 
-  // Send response based on context type
-  if (context.reply && !context.replied) {
-    context.reply({ content: msgContent, components: [row] });
-  } else if (context.followUp && context.replied) {
-    context.followUp({ content: msgContent, components: [row] });
-  } else {
-    context.channel.send({ content: msgContent, components: [row] });
+    // Send response based on context type
+    if (context.reply && !context.replied) {
+      context.reply({ content: msgContent, components: [row] });
+    } else if (context.followUp && context.replied) {
+      context.followUp({ content: msgContent, components: [row] });
+    } else {
+      context.channel.send({ content: msgContent, components: [row] });
+    }
+  } catch (error) {
+    console.error('Error in startBossTimer:', error);
   }
 }
 
