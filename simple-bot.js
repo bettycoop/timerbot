@@ -59,10 +59,21 @@ client.on('messageCreate', async (message) => {
         '`!update <hours> <BossName>` - Update an existing timer',
         '`!timer` - Show all active timers with reset buttons',
         '`!delete <BossName>` - Delete a specific timer',
+        '`!time` - Show current server time (for debugging)',
         '`!commands` - Show this help message'
       ];
       
       return message.channel.send(`**Available Commands:**\n${commands.join('\n')}`);
+    }
+
+    // Debug time command
+    if (command === 'time') {
+      const now = new Date();
+      const utc = new Date().toUTCString();
+      const local = new Date().toLocaleString();
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      
+      return message.channel.send(`**Server Time Debug:**\n- Server Local: ${local}\n- Server UTC: ${utc}\n- Timezone: ${timezone}\n- Timestamp: ${Date.now()}`);
     }
 
     // Boss timer command
