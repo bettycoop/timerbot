@@ -37,6 +37,9 @@ const bossTimers = {};
 // Storage for boss duration settings (remembered across kills)
 const bossDurations = {};
 
+// Storage for user timezone setting (default to UTC)
+let userTimezone = 'UTC';
+
 // Message handler
 client.on('messageCreate', async (message) => {
   // Ignore bot messages
@@ -59,21 +62,44 @@ client.on('messageCreate', async (message) => {
         '`!update <hours> <BossName>` - Update an existing timer',
         '`!timer` - Show all active timers with reset buttons',
         '`!delete <BossName>` - Delete a specific timer',
-        '`!time` - Show current server time (for debugging)',
+        '`!timezone <timezone>` - Set your timezone (e.g. America/New_York, Europe/London, Asia/Tokyo)',
+        '`!time` - Show current server time and your timezone',
         '`!commands` - Show this help message'
       ];
       
       return message.channel.send(`**Available Commands:**\n${commands.join('\n')}`);
     }
 
+    // Set timezone command
+    if (command === 'timezone') {
+      const timezone = args.join(' ');
+      
+      if (!timezone) {
+        return message.channel.send(`Current timezone: **${userTimezone}**\n\nTo set timezone: \`!timezone <timezone>\`\nExamples:\n- \`!timezone America/New_York\`\n- \`!timezone Europe/London\`\n- \`!timezone Asia/Tokyo\`\n- \`!timezone UTC\``);
+      }
+      
+      try {
+        // Test if timezone is valid
+        new Date().toLocaleString('en-US', { timeZone: timezone });
+        userTimezone = timezone;
+        
+        const now = new Date();
+        const userTime = now.toLocaleString('en-US', { timeZone: userTimezone });
+        
+        return message.channel.send(`✅ Timezone set to **${userTimezone}**\nCurrent time in your timezone: ${userTime}`);
+      } catch (error) {
+        return message.channel.send(`❌ Invalid timezone: **${timezone}**\n\nPlease use a valid timezone like:\n- America/New_York\n- Europe/London\n- Asia/Tokyo\n- UTC`);
+      }
+    }
+
     // Debug time command
     if (command === 'time') {
       const now = new Date();
-      const utc = new Date().toUTCString();
-      const local = new Date().toLocaleString();
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const utc = now.toUTCString();
+      const userTime = now.toLocaleString('en-US', { timeZone: userTimezone });
+      const serverLocal = now.toLocaleString();
       
-      return message.channel.send(`**Server Time Debug:**\n- Server Local: ${local}\n- Server UTC: ${utc}\n- Timezone: ${timezone}\n- Timestamp: ${Date.now()}`);
+      return message.channel.send(`**Time Debug:**\n- Your Time (${userTimezone}): ${userTime}\n- Server UTC: ${utc}\n- Server Local: ${serverLocal}`);
     }
 
     // Boss timer command
@@ -128,16 +154,24 @@ client.on('messageCreate', async (message) => {
         return message.channel.send('Invalid time. Use 24-hour format: `HH:MM`');
       }
 
-      // Set the respawn time directly
-      const respawnTime = new Date();
-      respawnTime.setHours(hour, minute, 0, 0);
+      // Set the respawn time directly in user's timezone
+      const now = new Date();
       
-      // If the time is in the past, assume it's for tomorrow
-      if (respawnTime.getTime() <= Date.now()) {
-        respawnTime.setDate(respawnTime.getDate() + 1);
+      // Get current time in user's timezone
+      const nowInUserTz = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+      
+      // Create target time in user's timezone
+      const targetTime = new Date(nowInUserTz);
+      targetTime.setHours(hour, minute, 0, 0);
+      
+      // If the time is in the past in user's timezone, assume it's for tomorrow
+      if (targetTime.getTime() <= nowInUserTz.getTime()) {
+        targetTime.setDate(targetTime.getDate() + 1);
       }
-
-      const endTime = respawnTime.getTime();
+      
+      // Calculate the difference and add it to current UTC time
+      const timeDifference = targetTime.getTime() - nowInUserTz.getTime();
+      const endTime = Date.now() + timeDifference;
       
       // Use provided hours for future respawns, or calculate current duration for this specific countdown
       const storedDuration = respawnHours || Math.ceil((endTime - Date.now()) / 3600000);
@@ -181,8 +215,10 @@ client.on('messageCreate', async (message) => {
         .setStyle(ButtonStyle.Primary);
       const resetRow = new ActionRowBuilder().addComponents(resetButton);
       
+      const userTimeString = new Date(endTime).toLocaleString('en-US', { timeZone: userTimezone });
+      
       return message.channel.send({
-        content: `⏳ **${bossName}** timer set to spawn at ${timeString} (${new Date(endTime).toLocaleString()})${durationText}`,
+        content: `⏳ **${bossName}** timer set to spawn at ${timeString} in your timezone (${userTimeString})${durationText}`,
         components: [resetRow]
       });
     }
@@ -345,9 +381,9 @@ function displayTimers(context) {
     const timeLeft = Math.ceil((data.endTime - Date.now()) / 60000);
     const hrsLeft = Math.floor(timeLeft / 60);
     const minsLeft = timeLeft % 60;
-    const respawnTime = new Date(data.endTime).toLocaleString();
+    const respawnTime = new Date(data.endTime).toLocaleString('en-US', { timeZone: userTimezone });
 
-    reply += `- **${boss}**: ${hrsLeft}h ${minsLeft}m left (Respawn at ${respawnTime})\n`;
+    reply += `- **${boss}**: ${hrsLeft}h ${minsLeft}m left (Respawn at ${respawnTime} ${userTimezone})\n`;
 
     const button = new ButtonBuilder()
       .setCustomId(`reset:${boss}`)
