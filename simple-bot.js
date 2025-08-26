@@ -42,6 +42,9 @@ const bossTimers = {};
 // Storage for boss duration settings (remembered across kills)
 const bossDurations = {};
 
+// Storage for boss notes
+const bossNotes = {};
+
 // Storage for user timezone setting (default to GMT+8)
 let userTimezone = 'Asia/Shanghai';
 
@@ -51,6 +54,7 @@ let timerChannel = null;
 // File paths for persistent storage
 const ACTIVE_TIMERS_FILE = path.join(__dirname, 'active-timers.json');
 const BOSS_DURATIONS_FILE = path.join(__dirname, 'boss-durations.json');
+const BOSS_NOTES_FILE = path.join(__dirname, 'boss-notes.json');
 const TIMEZONE_FILE = path.join(__dirname, 'user-timezone.json');
 const CHANNEL_FILE = path.join(__dirname, 'timer-channel.json');
 
@@ -128,6 +132,27 @@ function loadBossDurations() {
     }
   } catch (error) {
     console.error('❌ Error loading boss durations:', error);
+  }
+}
+
+function saveBossNotes() {
+  try {
+    fs.writeFileSync(BOSS_NOTES_FILE, JSON.stringify(bossNotes, null, 2));
+    console.log('✅ Boss notes saved');
+  } catch (error) {
+    console.error('❌ Error saving boss notes:', error);
+  }
+}
+
+function loadBossNotes() {
+  try {
+    if (fs.existsSync(BOSS_NOTES_FILE)) {
+      const savedNotes = JSON.parse(fs.readFileSync(BOSS_NOTES_FILE, 'utf8'));
+      Object.assign(bossNotes, savedNotes);
+      console.log(`✅ Loaded ${Object.keys(bossNotes).length} boss notes`);
+    }
+  } catch (error) {
+    console.error('❌ Error loading boss notes:', error);
   }
 }
 
@@ -282,6 +307,9 @@ function getTimerEmbed() {
       const respawnTime = new Date(timer.endTime).toLocaleString('en-US', { timeZone: userTimezone });
       
       description += `**${bossName}**\n`;
+      if (bossNotes[bossName]) {
+        description += `📝 ${bossNotes[bossName]}\n`;
+      }
       description += `⏰ ${hours}h ${minutes}m ${seconds}s\n`;
       description += `📅 Respawn: ${respawnTime}\n\n`;
     }
@@ -399,6 +427,7 @@ client.on('messageCreate', async (message) => {
           '`!set [boss name] [respawn time] [respawn cooldown hours]` - Set a timer',
           '`!update [boss name] [respawn time]` - Update timer information',
           '`!delete [boss name]` - Delete a specific timer',
+          '`!note [boss name] [note text]` - Add/update a note for a boss',
           '`!commands` - Show this command guide',
           '`!setchannel` - Set channel for hourly updates',
           '`!timezone <timezone>` - Set your timezone',
@@ -411,6 +440,7 @@ client.on('messageCreate', async (message) => {
               '`!set Dragon 16:30 2` - Set Dragon to respawn at 16:30 (2h cooldown)',
               '`!set Venatus 14:15 10` - Set Venatus to respawn at 14:15 (10h cooldown)',
               '`!update Dragon 17:00` - Update Dragon respawn time to 17:00',
+              '`!note Dragon Cave entrance near river` - Add note to Dragon',
               '`!delete Dragon` - Remove Dragon timer'
             ].join('\n')
           }
@@ -561,6 +591,32 @@ client.on('messageCreate', async (message) => {
       return message.channel.send({ embeds: [embed] });
     }
 
+    // !note - Add/update a note for a boss
+    if (command === 'note') {
+      if (args.length < 2) {
+        return message.channel.send('Format: `!note [boss name] [note text]`\nExample: `!note Dragon Cave entrance near river`');
+      }
+
+      const bossName = args[0];
+      const noteText = args.slice(1).join(' '); // Join all remaining arguments as the note
+
+      if (noteText.length > 100) {
+        return message.channel.send('Note is too long! Please keep it under 100 characters.');
+      }
+
+      bossNotes[bossName] = noteText;
+      saveBossNotes();
+
+      const embed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle('📝 Note Added')
+        .setDescription(`Note for **${bossName}**: ${noteText}`)
+        .setTimestamp()
+        .setFooter({ text: 'Boss Timer Bot' });
+
+      return message.channel.send({ embeds: [embed] });
+    }
+
     // !setchannel - Set channel for hourly updates
     if (command === 'setchannel') {
       timerChannel = message.channel;
@@ -659,6 +715,7 @@ client.once('ready', () => {
   // Load persistent data
   loadTimezone();
   loadBossDurations();
+  loadBossNotes();
   loadActiveTimers();
   loadTimerChannel();
   
