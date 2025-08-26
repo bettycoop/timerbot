@@ -308,7 +308,7 @@ function startHourlyUpdates() {
 }
 
 // Boss timer creation function
-function startBossTimer(context, bossName, hours, isReset = false) {
+function startBossTimer(context, bossName, hours, isReset = false, cooldownDuration = null) {
   try {
     const endTime = Date.now() + (hours * 60 * 60 * 1000);
 
@@ -317,9 +317,11 @@ function startBossTimer(context, bossName, hours, isReset = false) {
       clearTimeout(bossTimers[bossName].timer);
     }
 
-    // Store duration preference
-    bossDurations[bossName] = hours;
-    saveBossDurations();
+    // Store cooldown duration preference (only if provided)
+    if (cooldownDuration !== null) {
+      bossDurations[bossName] = cooldownDuration;
+      saveBossDurations();
+    }
 
     // Create new timer
     bossTimers[bossName] = {
@@ -350,13 +352,17 @@ function startBossTimer(context, bossName, hours, isReset = false) {
       .setStyle(ButtonStyle.Primary);
     const row = new ActionRowBuilder().addComponents(button);
 
+    // Display cooldown duration if available, otherwise show time remaining
+    const displayDuration = cooldownDuration || hours;
+    const durationText = cooldownDuration ? `${cooldownDuration}h cooldown` : `${hours.toFixed(1)}h remaining`;
+
     const embed = new EmbedBuilder()
       .setColor(isReset ? '#FFA500' : '#00FF00')
       .setTitle(isReset ? '🔄 Timer Reset' : '⏳ Timer Started')
-      .setDescription(`**${bossName}** timer set for ${hours} hours`)
+      .setDescription(`**${bossName}** timer set - ${durationText}`)
       .addFields(
         { name: 'Respawn Time', value: userTimeString, inline: true },
-        { name: 'Duration', value: `${hours} hours`, inline: true }
+        { name: 'Time Until Respawn', value: `${hours.toFixed(1)} hours`, inline: true }
       )
       .setTimestamp()
       .setFooter({ text: 'Boss Timer Bot' });
@@ -390,7 +396,7 @@ client.on('messageCreate', async (message) => {
         .setTitle('📋 Available Commands')
         .setDescription([
           '`!timer` - Check active timers manually',
-          '`!set [boss name] [respawn time] [respawn cooldown]` - Set a timer',
+          '`!set [boss name] [hours from now]` - Set a timer (hours from current time)',
           '`!update [boss name] [respawn time]` - Update timer information',
           '`!delete [boss name]` - Delete a specific timer',
           '`!commands` - Show this command guide',
@@ -402,7 +408,8 @@ client.on('messageCreate', async (message) => {
           { 
             name: 'Examples', 
             value: [
-              '`!set Dragon 16:30 2` - Set Dragon to respawn at 16:30 with 2h cooldown',
+              '`!set Dragon 2` - Set Dragon to respawn in 2 hours from now',
+              '`!set Venatus 10` - Set Venatus to respawn in 10 hours from now',
               '`!update Dragon 17:00` - Update Dragon respawn time to 17:00',
               '`!delete Dragon` - Remove Dragon timer'
             ].join('\n')
@@ -420,57 +427,21 @@ client.on('messageCreate', async (message) => {
       return message.channel.send({ embeds: [embed] });
     }
 
-    // !set - Set timer with format [boss name] [respawn time] [respawn cooldown]
+    // !set - Set timer with format [boss name] [hours from now]
     if (command === 'set') {
-      if (args.length < 3) {
-        return message.channel.send('Format: `!set [boss name] [respawn time] [respawn cooldown]`\nExample: `!set Dragon 16:30 2`');
+      if (args.length < 2) {
+        return message.channel.send('Format: `!set [boss name] [hours from now]`\nExample: `!set Dragon 2`');
       }
 
       const bossName = args[0];
-      const respawnTimeInput = args[1];
-      const respawnCooldown = parseFloat(args[2]);
+      const hoursFromNow = parseFloat(args[1]);
 
-      if (isNaN(respawnCooldown) || respawnCooldown <= 0) {
-        return message.channel.send('Please provide a valid respawn cooldown in hours.');
+      if (isNaN(hoursFromNow) || hoursFromNow <= 0) {
+        return message.channel.send('Please provide a valid number of hours (e.g., 2, 2.5, 10).');
       }
 
-      // Parse respawn time (HH:MM format)
-      const timeMatch = respawnTimeInput.match(/^(\d{1,2}):(\d{2})$/);
-      if (!timeMatch) {
-        return message.channel.send('Please use HH:MM format for respawn time (e.g., 16:30)');
-      }
-
-      const hours = parseInt(timeMatch[1]);
-      const minutes = parseInt(timeMatch[2]);
-
-      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        return message.channel.send('Please provide a valid time in 24-hour format (00:00 to 23:59)');
-      }
-
-      // Calculate when the timer should end using user's timezone
-      const now = new Date();
-      
-      // Get current time in user's timezone for comparison
-      const nowInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-      
-      // Create respawn time in user's timezone (today)
-      const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD format
-      const respawnTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
-      
-      // If the respawn time is in the past, assume it's tomorrow
-      if (respawnTime <= nowInUserTZ) {
-        respawnTime.setDate(respawnTime.getDate() + 1);
-      }
-      
-      // Calculate time until respawn
-      const respawnTimeUTC = new Date(respawnTime.getTime() - (respawnTime.getTimezoneOffset() * 60000));
-      const timeUntilRespawn = (respawnTimeUTC.getTime() - Date.now()) / (1000 * 60 * 60);
-
-      if (timeUntilRespawn <= 0) {
-        return message.channel.send(`${bossName} respawn time has already passed! Please check your time.\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
-      }
-
-      startBossTimer(message, bossName, timeUntilRespawn);
+      // Simply use the hours from now as the timer duration
+      startBossTimer(message, bossName, hoursFromNow, false, hoursFromNow);
       return;
     }
 
