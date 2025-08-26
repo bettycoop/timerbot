@@ -390,8 +390,8 @@ client.on('messageCreate', async (message) => {
         .setTitle('📋 Available Commands')
         .setDescription([
           '`!timer` - Check active timers manually',
-          '`!set [boss name] [time killed] [respawn cooldown]` - Set a timer',
-          '`!update [boss name] [time killed]` - Update timer information',
+          '`!set [boss name] [respawn time] [respawn cooldown]` - Set a timer',
+          '`!update [boss name] [respawn time]` - Update timer information',
           '`!delete [boss name]` - Delete a specific timer',
           '`!commands` - Show this command guide',
           '`!setchannel` - Set channel for hourly updates',
@@ -402,8 +402,8 @@ client.on('messageCreate', async (message) => {
           { 
             name: 'Examples', 
             value: [
-              '`!set Dragon 14:30 2` - Set Dragon killed at 14:30 with 2h respawn',
-              '`!update Dragon 15:00` - Update Dragon kill time to 15:00',
+              '`!set Dragon 16:30 2` - Set Dragon to respawn at 16:30 with 2h cooldown',
+              '`!update Dragon 17:00` - Update Dragon respawn time to 17:00',
               '`!delete Dragon` - Remove Dragon timer'
             ].join('\n')
           }
@@ -420,24 +420,24 @@ client.on('messageCreate', async (message) => {
       return message.channel.send({ embeds: [embed] });
     }
 
-    // !set - Set timer with format [boss name] [time killed] [respawn cooldown]
+    // !set - Set timer with format [boss name] [respawn time] [respawn cooldown]
     if (command === 'set') {
       if (args.length < 3) {
-        return message.channel.send('Format: `!set [boss name] [time killed] [respawn cooldown]`\nExample: `!set Dragon 14:30 2`');
+        return message.channel.send('Format: `!set [boss name] [respawn time] [respawn cooldown]`\nExample: `!set Dragon 16:30 2`');
       }
 
       const bossName = args[0];
-      const timeKilled = args[1];
+      const respawnTimeInput = args[1];
       const respawnCooldown = parseFloat(args[2]);
 
       if (isNaN(respawnCooldown) || respawnCooldown <= 0) {
         return message.channel.send('Please provide a valid respawn cooldown in hours.');
       }
 
-      // Parse time killed (HH:MM format)
-      const timeMatch = timeKilled.match(/^(\d{1,2}):(\d{2})$/);
+      // Parse respawn time (HH:MM format)
+      const timeMatch = respawnTimeInput.match(/^(\d{1,2}):(\d{2})$/);
       if (!timeMatch) {
-        return message.channel.send('Please use HH:MM format for time killed (e.g., 14:30)');
+        return message.channel.send('Please use HH:MM format for respawn time (e.g., 16:30)');
       }
 
       const hours = parseInt(timeMatch[1]);
@@ -447,28 +447,27 @@ client.on('messageCreate', async (message) => {
         return message.channel.send('Please provide a valid time in 24-hour format (00:00 to 23:59)');
       }
 
-      // Calculate respawn time using user's timezone
+      // Calculate when the timer should end using user's timezone
       const now = new Date();
       
       // Get current time in user's timezone for comparison
       const nowInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
       
-      // Create a base date in user's timezone (today)
+      // Create respawn time in user's timezone (today)
       const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD format
-      const killedTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
+      const respawnTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
       
-      // If the killed time is in the future compared to current time in user's timezone, assume it was yesterday
-      if (killedTime > nowInUserTZ) {
-        killedTime.setDate(killedTime.getDate() - 1);
+      // If the respawn time is in the past, assume it's tomorrow
+      if (respawnTime <= nowInUserTZ) {
+        respawnTime.setDate(respawnTime.getDate() + 1);
       }
       
-      // Convert to UTC for calculations
-      const killedTimeUTC = new Date(killedTime.getTime() - (killedTime.getTimezoneOffset() * 60000));
-      const respawnTime = new Date(killedTimeUTC.getTime() + (respawnCooldown * 60 * 60 * 1000));
-      const timeUntilRespawn = (respawnTime.getTime() - Date.now()) / (1000 * 60 * 60);
+      // Calculate time until respawn
+      const respawnTimeUTC = new Date(respawnTime.getTime() - (respawnTime.getTimezoneOffset() * 60000));
+      const timeUntilRespawn = (respawnTimeUTC.getTime() - Date.now()) / (1000 * 60 * 60);
 
       if (timeUntilRespawn <= 0) {
-        return message.channel.send(`${bossName} should have already respawned! Check your times.\nKilled: ${killedTime.toLocaleString('en-US', { timeZone: userTimezone })}\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
+        return message.channel.send(`${bossName} respawn time has already passed! Please check your time.\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
       }
 
       startBossTimer(message, bossName, timeUntilRespawn);
@@ -478,20 +477,20 @@ client.on('messageCreate', async (message) => {
     // !update - Update timer information
     if (command === 'update') {
       if (args.length < 2) {
-        return message.channel.send('Format: `!update [boss name] [time killed]`\nExample: `!update Dragon 15:00`');
+        return message.channel.send('Format: `!update [boss name] [respawn time]`\nExample: `!update Dragon 17:00`');
       }
 
       const bossName = args[0];
-      const timeKilled = args[1];
+      const respawnTimeInput = args[1];
 
       if (!bossTimers[bossName]) {
         return message.channel.send(`No active timer found for ${bossName}. Use \`!set\` to create a new timer.`);
       }
 
-      // Parse time killed (HH:MM format)
-      const timeMatch = timeKilled.match(/^(\d{1,2}):(\d{2})$/);
+      // Parse respawn time (HH:MM format)
+      const timeMatch = respawnTimeInput.match(/^(\d{1,2}):(\d{2})$/);
       if (!timeMatch) {
-        return message.channel.send('Please use HH:MM format for time killed (e.g., 15:00)');
+        return message.channel.send('Please use HH:MM format for respawn time (e.g., 17:00)');
       }
 
       const hours = parseInt(timeMatch[1]);
@@ -501,31 +500,27 @@ client.on('messageCreate', async (message) => {
         return message.channel.send('Please provide a valid time in 24-hour format (00:00 to 23:59)');
       }
 
-      // Use stored duration for this boss
-      const respawnCooldown = bossDurations[bossName] || 1;
-
-      // Calculate respawn time using user's timezone
+      // Calculate when the timer should end using user's timezone
       const now = new Date();
       
       // Get current time in user's timezone for comparison
       const nowInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
       
-      // Create a base date in user's timezone (today)
+      // Create respawn time in user's timezone (today)
       const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD format
-      const killedTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
+      const respawnTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
       
-      // If the killed time is in the future compared to current time in user's timezone, assume it was yesterday
-      if (killedTime > nowInUserTZ) {
-        killedTime.setDate(killedTime.getDate() - 1);
+      // If the respawn time is in the past, assume it's tomorrow
+      if (respawnTime <= nowInUserTZ) {
+        respawnTime.setDate(respawnTime.getDate() + 1);
       }
       
-      // Convert to UTC for calculations
-      const killedTimeUTC = new Date(killedTime.getTime() - (killedTime.getTimezoneOffset() * 60000));
-      const respawnTime = new Date(killedTimeUTC.getTime() + (respawnCooldown * 60 * 60 * 1000));
-      const timeUntilRespawn = (respawnTime.getTime() - Date.now()) / (1000 * 60 * 60);
+      // Calculate time until respawn
+      const respawnTimeUTC = new Date(respawnTime.getTime() - (respawnTime.getTimezoneOffset() * 60000));
+      const timeUntilRespawn = (respawnTimeUTC.getTime() - Date.now()) / (1000 * 60 * 60);
 
       if (timeUntilRespawn <= 0) {
-        return message.channel.send(`${bossName} should have already respawned! Check your times.\nKilled: ${killedTime.toLocaleString('en-US', { timeZone: userTimezone })}\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
+        return message.channel.send(`${bossName} respawn time has already passed! Please check your time.\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
       }
 
       startBossTimer(message, bossName, timeUntilRespawn, true);
