@@ -47,6 +47,7 @@ let userTimezone = 'UTC';
 // File paths for persistent storage
 const ACTIVE_TIMERS_FILE = path.join(__dirname, 'active-timers.json');
 const BOSS_DURATIONS_FILE = path.join(__dirname, 'boss-durations.json');
+const TIMEZONE_FILE = path.join(__dirname, 'user-timezone.json');
 
 // Save active timers to file
 function saveActiveTimers() {
@@ -63,6 +64,31 @@ function saveActiveTimers() {
     console.log('💾 Active timers saved to file');
   } catch (error) {
     console.error('❌ Error saving active timers:', error);
+  }
+}
+
+// Save timezone setting to file
+function saveTimezone() {
+  try {
+    fs.writeFileSync(TIMEZONE_FILE, JSON.stringify({ timezone: userTimezone }, null, 2));
+    console.log('🌐 Timezone saved to file');
+  } catch (error) {
+    console.error('❌ Error saving timezone:', error);
+  }
+}
+
+// Load timezone setting from file
+function loadTimezone() {
+  try {
+    if (fs.existsSync(TIMEZONE_FILE)) {
+      const data = fs.readFileSync(TIMEZONE_FILE, 'utf8');
+      const timezoneData = JSON.parse(data);
+      userTimezone = timezoneData.timezone || 'UTC';
+      console.log(`🌐 Loaded timezone: ${userTimezone}`);
+    }
+  } catch (error) {
+    console.error('❌ Error loading timezone:', error);
+    userTimezone = 'UTC';
   }
 }
 
@@ -110,6 +136,7 @@ function loadActiveTimers() {
 }
 
 // Load active timers on startup
+loadTimezone(); // Load timezone first
 loadActiveTimers();
 
 // Message handler
@@ -155,6 +182,7 @@ client.on('messageCreate', async (message) => {
         // Test if timezone is valid
         new Date().toLocaleString('en-US', { timeZone: timezone });
         userTimezone = timezone;
+        saveTimezone(); // Save timezone setting
         
         const now = new Date();
         const userTime = now.toLocaleString('en-US', { timeZone: userTimezone });
