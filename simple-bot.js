@@ -447,21 +447,28 @@ client.on('messageCreate', async (message) => {
         return message.channel.send('Please provide a valid time in 24-hour format (00:00 to 23:59)');
       }
 
-      // Calculate respawn time
+      // Calculate respawn time using user's timezone
       const now = new Date();
-      const killedTime = new Date();
-      killedTime.setHours(hours, minutes, 0, 0);
       
-      // If the time is in the future, assume it was yesterday
-      if (killedTime > now) {
+      // Get current time in user's timezone for comparison
+      const nowInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+      
+      // Create a base date in user's timezone (today)
+      const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD format
+      const killedTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
+      
+      // If the killed time is in the future compared to current time in user's timezone, assume it was yesterday
+      if (killedTime > nowInUserTZ) {
         killedTime.setDate(killedTime.getDate() - 1);
       }
-
-      const respawnTime = new Date(killedTime.getTime() + (respawnCooldown * 60 * 60 * 1000));
+      
+      // Convert to UTC for calculations
+      const killedTimeUTC = new Date(killedTime.getTime() - (killedTime.getTimezoneOffset() * 60000));
+      const respawnTime = new Date(killedTimeUTC.getTime() + (respawnCooldown * 60 * 60 * 1000));
       const timeUntilRespawn = (respawnTime.getTime() - Date.now()) / (1000 * 60 * 60);
 
       if (timeUntilRespawn <= 0) {
-        return message.channel.send(`${bossName} should have already respawned! Check your times.`);
+        return message.channel.send(`${bossName} should have already respawned! Check your times.\nKilled: ${killedTime.toLocaleString('en-US', { timeZone: userTimezone })}\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
       }
 
       startBossTimer(message, bossName, timeUntilRespawn);
@@ -497,21 +504,28 @@ client.on('messageCreate', async (message) => {
       // Use stored duration for this boss
       const respawnCooldown = bossDurations[bossName] || 1;
 
-      // Calculate respawn time
+      // Calculate respawn time using user's timezone
       const now = new Date();
-      const killedTime = new Date();
-      killedTime.setHours(hours, minutes, 0, 0);
       
-      // If the time is in the future, assume it was yesterday
-      if (killedTime > now) {
+      // Get current time in user's timezone for comparison
+      const nowInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+      
+      // Create a base date in user's timezone (today)
+      const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD format
+      const killedTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
+      
+      // If the killed time is in the future compared to current time in user's timezone, assume it was yesterday
+      if (killedTime > nowInUserTZ) {
         killedTime.setDate(killedTime.getDate() - 1);
       }
-
-      const respawnTime = new Date(killedTime.getTime() + (respawnCooldown * 60 * 60 * 1000));
+      
+      // Convert to UTC for calculations
+      const killedTimeUTC = new Date(killedTime.getTime() - (killedTime.getTimezoneOffset() * 60000));
+      const respawnTime = new Date(killedTimeUTC.getTime() + (respawnCooldown * 60 * 60 * 1000));
       const timeUntilRespawn = (respawnTime.getTime() - Date.now()) / (1000 * 60 * 60);
 
       if (timeUntilRespawn <= 0) {
-        return message.channel.send(`${bossName} should have already respawned! Check your times.`);
+        return message.channel.send(`${bossName} should have already respawned! Check your times.\nKilled: ${killedTime.toLocaleString('en-US', { timeZone: userTimezone })}\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
       }
 
       startBossTimer(message, bossName, timeUntilRespawn, true);
