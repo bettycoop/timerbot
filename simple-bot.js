@@ -1,6 +1,10 @@
 // Load environment variables
 require('dotenv').config();
 
+// Import required modules
+const fs = require('fs');
+const path = require('path');
+
 // Environment validation
 console.log('🔍 Checking environment variables...');
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -40,6 +44,74 @@ const bossDurations = {};
 // Storage for user timezone setting (default to UTC)
 let userTimezone = 'UTC';
 
+// File paths for persistent storage
+const ACTIVE_TIMERS_FILE = path.join(__dirname, 'active-timers.json');
+const BOSS_DURATIONS_FILE = path.join(__dirname, 'boss-durations.json');
+
+// Save active timers to file
+function saveActiveTimers() {
+  try {
+    const timersToSave = {};
+    for (const [bossName, timerData] of Object.entries(bossTimers)) {
+      timersToSave[bossName] = {
+        endTime: timerData.endTime,
+        duration: timerData.duration
+      };
+    }
+    fs.writeFileSync(ACTIVE_TIMERS_FILE, JSON.stringify(timersToSave, null, 2));
+    fs.writeFileSync(BOSS_DURATIONS_FILE, JSON.stringify(bossDurations, null, 2));
+    console.log('💾 Active timers saved to file');
+  } catch (error) {
+    console.error('❌ Error saving active timers:', error);
+  }
+}
+
+// Load and restore active timers from file
+function loadActiveTimers() {
+  try {
+    // Load boss durations
+    if (fs.existsSync(BOSS_DURATIONS_FILE)) {
+      const durationsData = fs.readFileSync(BOSS_DURATIONS_FILE, 'utf8');
+      Object.assign(bossDurations, JSON.parse(durationsData));
+    }
+
+    // Load active timers
+    if (fs.existsSync(ACTIVE_TIMERS_FILE)) {
+      const data = fs.readFileSync(ACTIVE_TIMERS_FILE, 'utf8');
+      const savedTimers = JSON.parse(data);
+      
+      let restoredCount = 0;
+      for (const [bossName, timerData] of Object.entries(savedTimers)) {
+        const timeRemaining = timerData.endTime - Date.now();
+        
+        if (timeRemaining > 0) {
+          // Timer is still active, restore it
+          bossTimers[bossName] = {
+            timeout: setTimeout(() => {
+              // Timer finished - boss is spawning
+              console.log(`⚔️ ${bossName} is spawning now! (restored timer)`);
+              delete bossTimers[bossName];
+              saveActiveTimers();
+            }, timeRemaining),
+            endTime: timerData.endTime,
+            duration: timerData.duration
+          };
+          restoredCount++;
+        }
+      }
+      
+      if (restoredCount > 0) {
+        console.log(`✅ Restored ${restoredCount} active timer(s)`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error loading active timers:', error);
+  }
+}
+
+// Load active timers on startup
+loadActiveTimers();
+
 // Message handler
 client.on('messageCreate', async (message) => {
   // Ignore bot messages
@@ -62,7 +134,8 @@ client.on('messageCreate', async (message) => {
         '`!update <hours> <BossName>` - Update an existing timer',
         '`!timer` - Show all active timers with reset buttons',
         '`!delete <BossName>` - Delete a specific timer',
-        '`!timezone <timezone>` - Set your timezone (e.g. America/New_York, Europe/London, Asia/Tokyo)',
+        '`!status` - Show bot uptime and persistent timer status',
+        '`!timezone <timezone>` - Set your timezone (e.g. Asia/Singapore)',
         '`!time` - Show current server time and your timezone',
         '`!commands` - Show this help message'
       ];
@@ -124,6 +197,30 @@ client.on('messageCreate', async (message) => {
         return message.channel.send('No active boss timers.');
       }
       displayTimers(message);
+    }
+
+    // Show bot status and persistence info
+    if (command === 'status') {
+      const uptime = process.uptime();
+      const uptimeHours = Math.floor(uptime / 3600);
+      const uptimeMinutes = Math.floor((uptime % 3600) / 60);
+      const uptimeSeconds = Math.floor(uptime % 60);
+      
+      const activeTimerCount = Object.keys(bossTimers).length;
+      const savedDurationCount = Object.keys(bossDurations).length;
+      
+      const statusInfo = [
+        `**Bot Status:**`,
+        `⏱️ Uptime: ${uptimeHours}h ${uptimeMinutes}m ${uptimeSeconds}s`,
+        `🔄 Active Timers: ${activeTimerCount}`,
+        `💾 Saved Durations: ${savedDurationCount}`,
+        `🌐 Timezone: ${userTimezone}`,
+        `🗄️ Persistent Storage: ✅ Enabled`,
+        ``,
+        `*Timers will survive bot restarts and redeploys!*`
+      ];
+      
+      return message.channel.send(statusInfo.join('\n'));
     }
 
     // Set timer based on respawn time
@@ -294,6 +391,7 @@ client.on('messageCreate', async (message) => {
       
       clearTimeout(bossTimers[bossName].timeout);
       delete bossTimers[bossName];
+      saveActiveTimers(); // Save state after deletion
       return message.channel.send(`🗑️ Timer for **${bossName}** has been deleted.`);
     }
 
@@ -481,15 +579,20 @@ function startBossTimer(context, bossName, hours, isReset = false, customEndTime
           
           // Clean up the timer from storage
           delete bossTimers[bossName];
+          saveActiveTimers(); // Save state after timer expires
         } catch (error) {
           console.error('Error in timer callback:', error);
           // Still clean up the timer even if there's an error
           delete bossTimers[bossName];
+          saveActiveTimers(); // Save state even on error
         }
       }, endTime - Date.now()),
       endTime: endTime,
       duration: hours
     };
+
+    // Save the new timer state
+    saveActiveTimers();
 
     const userTimeString = new Date(endTime).toLocaleString('en-US', { timeZone: userTimezone });
     
