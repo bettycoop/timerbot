@@ -424,7 +424,7 @@ client.on('messageCreate', async (message) => {
         .setTitle('📋 Available Commands')
         .setDescription([
           '`!timer` - Check active timers manually',
-          '`!set [boss name] [respawn time] [respawn cooldown hours]` - Set a timer',
+          '`!set [boss name] [hours from now]` - Set a timer',
           '`!update [boss name] [respawn time]` - Update timer information',
           '`!delete [boss name]` - Delete a specific timer',
           '`!note [boss name] [note text]` - Add/update a note for a boss',
@@ -437,8 +437,8 @@ client.on('messageCreate', async (message) => {
           { 
             name: 'Examples', 
             value: [
-              '`!set Dragon 16:30 2` - Set Dragon to respawn at 16:30 (2h cooldown)',
-              '`!set Venatus 14:15 10` - Set Venatus to respawn at 14:15 (10h cooldown)',
+              '`!set Dragon 10` - Set Dragon to respawn in 10 hours from now',
+              '`!set Venatus 2` - Set Venatus to respawn in 2 hours from now',
               '`!update Dragon 17:00` - Update Dragon respawn time to 17:00',
               '`!note Dragon Cave entrance near river` - Add note to Dragon',
               '`!delete Dragon` - Remove Dragon timer'
@@ -457,58 +457,22 @@ client.on('messageCreate', async (message) => {
       return message.channel.send({ embeds: [embed] });
     }
 
-    // !set - Set timer with format [boss name] [respawn time] [respawn cooldown hours]
+    // !set - Set timer with format [boss name] [hours from now]
     if (command === 'set') {
-      if (args.length < 3) {
-        return message.channel.send('Format: `!set [boss name] [respawn time] [respawn cooldown hours]`\nExample: `!set Dragon 16:30 2`');
+      if (args.length < 2) {
+        return message.channel.send('Format: `!set [boss name] [hours from now]`\nExample: `!set Dragon 10`');
       }
 
       const bossName = args[0];
-      const respawnTimeInput = args[1];
-      const respawnCooldown = parseFloat(args[2]);
+      const hoursFromNow = parseFloat(args[1]);
 
-      if (isNaN(respawnCooldown) || respawnCooldown <= 0) {
-        return message.channel.send('Please provide a valid respawn cooldown in hours (e.g., 2, 2.5, 10).');
+      if (isNaN(hoursFromNow) || hoursFromNow <= 0) {
+        return message.channel.send('Please provide a valid number of hours (e.g., 2, 2.5, 10).');
       }
 
-      // Parse respawn time (HH:MM format)
-      const timeMatch = respawnTimeInput.match(/^(\d{1,2}):(\d{2})$/);
-      if (!timeMatch) {
-        return message.channel.send('Please use HH:MM format for respawn time (e.g., 16:30)');
-      }
-
-      const hours = parseInt(timeMatch[1]);
-      const minutes = parseInt(timeMatch[2]);
-
-      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        return message.channel.send('Please provide a valid time in 24-hour format (00:00 to 23:59)');
-      }
-
-      // Calculate when the timer should end using user's timezone
-      const now = new Date();
-      
-      // Get current time in user's timezone for comparison
-      const nowInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-      
-      // Create respawn time in user's timezone (today)
-      const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD format
-      const respawnTime = new Date(`${todayStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
-      
-      // If the respawn time is in the past, assume it's tomorrow
-      if (respawnTime <= nowInUserTZ) {
-        respawnTime.setDate(respawnTime.getDate() + 1);
-      }
-      
-      // Calculate time until respawn
-      const respawnTimeUTC = new Date(respawnTime.getTime() - (respawnTime.getTimezoneOffset() * 60000));
-      const timeUntilRespawn = (respawnTimeUTC.getTime() - Date.now()) / (1000 * 60 * 60);
-
-      if (timeUntilRespawn <= 0) {
-        return message.channel.send(`${bossName} respawn time has already passed! Please check your time.\nRespawn: ${respawnTime.toLocaleString('en-US', { timeZone: userTimezone })}\nCurrent: ${now.toLocaleString('en-US', { timeZone: userTimezone })}`);
-      }
-
-      // Use the respawn cooldown for storage and the calculated time for the actual timer
-      startBossTimer(message, bossName, timeUntilRespawn, false, respawnCooldown);
+      // Simple: just use the hours directly from current time
+      // If user says 10 hours, add exactly 10 hours from now
+      startBossTimer(message, bossName, hoursFromNow, false, hoursFromNow);
       return;
     }
 
