@@ -396,7 +396,7 @@ client.on('messageCreate', async (message) => {
         .setTitle('📋 Available Commands')
         .setDescription([
           '`!timer` - Check active timers manually',
-          '`!set [boss name] [hours from now]` - Set a timer (hours from current time)',
+          '`!set [boss name] [respawn cooldown hours]` - Set a timer with respawn cooldown',
           '`!update [boss name] [respawn time]` - Update timer information',
           '`!delete [boss name]` - Delete a specific timer',
           '`!commands` - Show this command guide',
@@ -408,8 +408,8 @@ client.on('messageCreate', async (message) => {
           { 
             name: 'Examples', 
             value: [
-              '`!set Dragon 2` - Set Dragon to respawn in 2 hours from now',
-              '`!set Venatus 10` - Set Venatus to respawn in 10 hours from now',
+              '`!set Dragon 2` - Set Dragon with 2-hour respawn cooldown',
+              '`!set Venatus 10` - Set Venatus with 10-hour respawn cooldown',
               '`!update Dragon 17:00` - Update Dragon respawn time to 17:00',
               '`!delete Dragon` - Remove Dragon timer'
             ].join('\n')
@@ -427,21 +427,21 @@ client.on('messageCreate', async (message) => {
       return message.channel.send({ embeds: [embed] });
     }
 
-    // !set - Set timer with format [boss name] [hours from now]
+    // !set - Set timer with format [boss name] [respawn cooldown hours]
     if (command === 'set') {
       if (args.length < 2) {
-        return message.channel.send('Format: `!set [boss name] [hours from now]`\nExample: `!set Dragon 2`');
+        return message.channel.send('Format: `!set [boss name] [respawn cooldown hours]`\nExample: `!set Dragon 2`');
       }
 
       const bossName = args[0];
-      const hoursFromNow = parseFloat(args[1]);
+      const respawnCooldown = parseFloat(args[1]);
 
-      if (isNaN(hoursFromNow) || hoursFromNow <= 0) {
-        return message.channel.send('Please provide a valid number of hours (e.g., 2, 2.5, 10).');
+      if (isNaN(respawnCooldown) || respawnCooldown <= 0) {
+        return message.channel.send('Please provide a valid respawn cooldown in hours (e.g., 2, 2.5, 10).');
       }
 
-      // Simply use the hours from now as the timer duration
-      startBossTimer(message, bossName, hoursFromNow, false, hoursFromNow);
+      // Use the respawn cooldown as the timer duration
+      startBossTimer(message, bossName, respawnCooldown, false, respawnCooldown);
       return;
     }
 
