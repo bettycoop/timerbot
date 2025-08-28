@@ -16,6 +16,8 @@ if (!TOKEN) {
 }
 
 console.log('✅ DISCORD_TOKEN found');
+console.log('🔍 Token length:', TOKEN.length);
+console.log('🔍 Token starts with:', TOKEN.substring(0, 10) + '...');
 
 // Import Discord.js components
 const { 
