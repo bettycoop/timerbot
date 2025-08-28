@@ -1,12 +1,27 @@
 // Bulletproof Discord Bot for Render - Never Goes Offline
-require('dotenv').config();
+// Load .env only if it exists (for local development)
+try {
+  require('dotenv').config();
+  console.log('📁 .env file loaded (local development)');
+} catch (error) {
+  console.log('� No .env file found (production environment)');
+}
 
-console.log('🚀 Starting bulletproof bot...');
+console.log('�🚀 Starting bulletproof bot...');
 
-// Environment check
+// Environment check with fallbacks
 const TOKEN = process.env.DISCORD_TOKEN;
+console.log('🔍 Environment check:');
+console.log('  - NODE_ENV:', process.env.NODE_ENV || 'not set');
+console.log('  - Platform:', process.platform);
+console.log('  - Available env vars:', Object.keys(process.env).filter(k => k.includes('DISCORD')));
+
 if (!TOKEN) {
-  console.error('❌ No token found');
+  console.error('❌ DISCORD_TOKEN not found in environment variables');
+  console.error('Available environment variables:');
+  Object.keys(process.env).forEach(key => {
+    console.error(`  - ${key}: ${key.includes('TOKEN') ? '[HIDDEN]' : process.env[key]}`);
+  });
   process.exit(1);
 }
 
