@@ -1,0 +1,14 @@
+{
+  "Venatus": {
+    "respawnTime": "19:00",
+    "cooldown": 10,
+    "addedBy": "mrngrc",
+    "addedAt": "2025-08-28T09:43:06.501Z"
+  },
+  "Viorent": {
+    "respawnTime": "19:02",
+    "cooldown": 10,
+    "addedBy": "mrngrc",
+    "addedAt": "2025-08-28T09:43:46.252Z"
+  }
+}
