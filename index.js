@@ -590,11 +590,20 @@ client.once('ready', async () => {
 
 // Error handling
 client.on('error', error => {
-  console.error('Discord client error:', error);
+  console.error('❌ Discord client error:', error);
+});
+
+client.on('shardError', error => {
+  console.error('❌ A websocket connection encountered an error:', error);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
 });
 
 // Create HTTP server for deployment
@@ -611,8 +620,20 @@ server.listen(PORT, () => {
 
 // Login to Discord
 console.log('🔑 Attempting to login to Discord...');
-client.login(TOKEN).catch(error => {
-  console.error('❌ Failed to login to Discord:', error.message);
-  console.error('Full error:', error);
+console.log('🌍 Environment:', {
+  nodeVersion: process.version,
+  platform: process.platform,
+  env: process.env.NODE_ENV || 'development'
+});
+
+client.login(TOKEN).then(() => {
+  console.log('✅ Discord login promise resolved');
+}).catch(error => {
+  console.error('❌ Failed to login to Discord:');
+  console.error('Error type:', typeof error);
+  console.error('Error name:', error.name);
+  console.error('Error message:', error.message);
+  console.error('Error code:', error.code);
+  console.error('Stack trace:', error.stack);
   process.exit(1);
 });
