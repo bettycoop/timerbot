@@ -1,21 +1,29 @@
 // Load environment variables
 require('dotenv').config();
 
-// Import required modules
-const fs = require('fs');
-const path = require('path');
-
-// Environment validation
+// Environment validation with detailed logging
 console.log('🔍 Checking environment variables...');
+console.log('� Current working directory:', process.cwd());
+console.log('📁 Directory contents:', require('fs').readdirSync('.'));
+
 const TOKEN = process.env.DISCORD_TOKEN;
+
+console.log('🔑 Token check:');
+console.log('- Token exists:', !!TOKEN);
+console.log('- Token length:', TOKEN ? TOKEN.length : 0);
+console.log('- Token starts with:', TOKEN ? TOKEN.substring(0, 10) + '...' : 'undefined');
 
 if (!TOKEN) {
   console.error('❌ DISCORD_TOKEN is not found in environment variables');
-  console.error('Please set the DISCORD_TOKEN environment variable');
+  console.error('Available environment variables:', Object.keys(process.env).filter(key => key.includes('DISCORD') || key.includes('TOKEN')));
   process.exit(1);
 }
 
-console.log('✅ DISCORD_TOKEN found');
+console.log('✅ DISCORD_TOKEN found and validated');
+
+// Import required modules
+const fs = require('fs');
+const path = require('path');
 
 // Import Discord.js components
 const { 
@@ -611,8 +619,16 @@ server.listen(PORT, () => {
 
 // Login to Discord
 console.log('🔑 Attempting to login to Discord...');
-client.login(TOKEN).catch(error => {
-  console.error('❌ Failed to login to Discord:', error.message);
+console.log('🌐 Node.js version:', process.version);
+console.log('🎯 Environment:', process.env.NODE_ENV || 'development');
+
+client.login(TOKEN).then(() => {
+  console.log('✅ Login successful!');
+}).catch(error => {
+  console.error('❌ Failed to login to Discord:');
+  console.error('Error name:', error.name);
+  console.error('Error message:', error.message);
+  console.error('Error code:', error.code);
   console.error('Full error:', error);
   process.exit(1);
 });
